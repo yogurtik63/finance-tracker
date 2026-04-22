@@ -1,1 +1,4 @@
 app/database.db
+.idea/
+app/__pycache__/
+.env

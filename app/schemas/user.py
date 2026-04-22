@@ -7,3 +7,7 @@ class UserCreate(BaseModel):
 class UserPublic(BaseModel):
     id: int
     username: str
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
