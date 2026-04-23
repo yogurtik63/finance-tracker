@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.database import init_db
 from app.routers import users
+from app.models import user, transaction
 
 app = FastAPI(title="Hamster Finance")
 

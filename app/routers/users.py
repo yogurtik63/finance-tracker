@@ -1,5 +1,3 @@
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import select

@@ -21,11 +21,9 @@ class Token(BaseModel):
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
-    # return bcrypt.hashpw(password.encode("utf-8"), salt=salt).decode()
 
 def verify_password(password: str, hashed_password: str) -> bool:
     return pwd_context.verify(password, hashed_password)
-    # return bcrypt.checkpw(check_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
