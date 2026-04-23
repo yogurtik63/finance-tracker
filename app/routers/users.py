@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -56,7 +56,6 @@ async def login(response: Response, user: UserLogin, session: AsyncSession = Dep
 @router.get("/credentials", response_model=UserPublic)
 async def get_credentials(session: AsyncSession = Depends(get_session),
                           credentials: HTTPAuthorizationCredentials = Depends(security)):
-
     token = decode_token(credentials.credentials)
 
     user_id = token.get("sub")
@@ -70,3 +69,20 @@ async def get_credentials(session: AsyncSession = Depends(get_session),
         raise HTTPException(401, detail="User not found")
 
     return result.first()
+
+
+@router.post("/refresh")
+async def refresh_token(response: Response, refresh_token: str | None = Cookie(default=None)):
+    if not refresh_token:
+        raise HTTPException(401, detail="No refresh token")
+
+    token = decode_token(refresh_token)
+    user_id = token.get("sub")
+
+    access_token = create_access_token({"sub": user_id})
+    refresh_token = create_refresh_token({"sub": user_id})
+
+    response.set_cookie(key="access_token", value=access_token, httponly=True)
+    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True)
+
+    return {"answer": "Token refreshed successfully!"}
