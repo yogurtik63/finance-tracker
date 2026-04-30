@@ -1,18 +1,22 @@
 from dotenv import load_dotenv
+from fastapi.security import HTTPAuthorizationCredentials
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from app.core.config import *
+from app.core.security import pwd_context, security
+from app.database import get_session
+from app.models.user import User
+
 load_dotenv()
-import os
 
 from datetime import datetime, timedelta
 
-from passlib.context import CryptContext
 from pydantic import BaseModel
-from fastapi import HTTPException
+from fastapi import HTTPException, Depends
 
 import jwt
 
-pwd_context = CryptContext(schemes=["bcrypt"])
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM")
 
 class Token(BaseModel):
     access_token: str
@@ -52,3 +56,19 @@ def decode_token(str_token: str):
         raise HTTPException(status_code=401, detail="Invalid token")
     except BaseException as e:
         raise e
+
+async def get_current_user(session: AsyncSession = Depends(get_session),
+                          credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = decode_token(credentials.credentials)
+
+    user_id = token.get("sub")
+
+    if not user_id:
+        raise HTTPException(401, detail="User id not found")
+
+    result = await session.exec(select(User).where(User.id == int(user_id)))
+
+    if not result:
+        raise HTTPException(401, detail="User not found")
+
+    return result.first()

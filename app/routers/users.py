@@ -1,15 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.database import get_session
 from app.models.user import User
-from app.routers.auth import hash_password, create_access_token, create_refresh_token, verify_password, decode_token
+from app.routers.auth import hash_password, create_access_token, create_refresh_token, verify_password, decode_token, \
+    get_current_user
 from app.schemas.user import UserCreate, UserPublic, UserLogin
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-security = HTTPBearer()
 
 
 @router.post("/register", response_model=UserPublic)
@@ -50,24 +49,9 @@ async def login(response: Response, user: UserLogin, session: AsyncSession = Dep
     else:
         raise HTTPException(400, detail="Incorrect password!")
 
-
 @router.get("/credentials", response_model=UserPublic)
-async def get_credentials(session: AsyncSession = Depends(get_session),
-                          credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = decode_token(credentials.credentials)
-
-    user_id = token.get("sub")
-
-    if not user_id:
-        raise HTTPException(401, detail="User id not found")
-
-    result = await session.exec(select(User).where(User.id == int(user_id)))
-
-    if not result:
-        raise HTTPException(401, detail="User not found")
-
-    return result.first()
-
+async def get_credentials(user: User = Depends(get_current_user)):
+    return user
 
 @router.post("/refresh")
 async def refresh_token(response: Response, refresh_token: str | None = Cookie(default=None)):
