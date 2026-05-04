@@ -1,58 +1,39 @@
-from datetime import datetime
-from calendar import monthrange
+from datetime import datetime, timezone, timedelta
+from typing import Literal
 
+from fastapi import HTTPException
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.core.config import EXPENSE_CATEGORIES, INCOME_CATEGORIES
 
 
 class TransactionFilter(BaseModel):
-    year: int | None = None
-    month: int | None = None
-    day: int | None = None
-    type: str | None = None
+    from_date: datetime | None = None
+    to_date: datetime | None = None
+    type: Literal["expense", "income"] | None = None
     category: str | None = None
     limit: int = 10
     offset: int = 0
 
-    @field_validator("year")
-    def check_year(cls, value):
-        if value is None:
-            return value
-
-        if not (2010 <= value <= 2027):
-            raise ValueError("Wrong 'year' path parameter")
-        return value
-
-    @field_validator("month")
-    def check_month(cls, value):
-        if value is None:
-            return value
-
-        if not (1 <= value <= 12):
-            raise ValueError("Wrong 'month' path parameter")
-        return value
-
     @model_validator(mode="after")
-    def check_day(self):
-        if self.year is None or self.month is None or self.day is None:
+    def check_dates(self):
+        if not self.from_date or not self.to_date:
+            self.from_date = None
+            self.to_date = None
             return self
 
-        if self.year and self.month and self.day:
-            max_day = monthrange(self.year, self.month)[1]
+        if self.from_date >= self.to_date:
+            raise HTTPException(422, "'from' date can't be less than 'to' date!")
 
-            if not (1 <= self.day <= max_day):
-                raise ValueError("Wrong day")
+        if self.from_date and not (2010 <= self.from_date.year <= 2027):
+            raise HTTPException(422, "Too old/new from_date")
+
+        if self.to_date and not (2010 <= self.to_date.year <= 2027):
+            raise HTTPException(422, "Too old/new to_date")
+
+        self.to_date = self.to_date + timedelta(days=1)
 
         return self
-    @field_validator("type")
-    def check_type(cls, value):
-        if value is None:
-            return value
-
-        if value not in ("expense", "income"):
-            raise ValueError("Wrong 'type' path parameter")
-        return value
 
     @model_validator(mode="after")
     def check_category(self):
@@ -67,12 +48,14 @@ class TransactionFilter(BaseModel):
         return self
 
     @field_validator("limit")
+    @classmethod
     def check_limit(cls, value):
         value = max(1, min(value, 50))
 
         return value
 
     @field_validator("offset")
+    @classmethod
     def check_offset(cls, value):
         value = max(0, min(value, 100))
 
@@ -85,12 +68,21 @@ class TransactionCreate(BaseModel):
     category: str
 
     @field_validator("value")
+    @classmethod
     def check_value(cls, value):
         if value == 0:
             raise ValueError("Value cannot be equal to zero!")
         elif abs(value) > 999_999_999_999:
             raise ValueError("You are too rich (or too broke)!")
         return value
+
+    @field_validator("date", mode="after")
+    @classmethod
+    def normalize_date(cls, value: datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+
+        return value.astimezone(timezone.utc)
 
     @model_validator(mode="after")
     def check_category(self):
@@ -107,3 +99,14 @@ class TransactionPublic(BaseModel):
     value: int
     date: datetime
     category: str
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def parse_timestamp(cls, value):
+        if isinstance(value, int):
+            return datetime.fromtimestamp(value, tz=timezone.utc)
+        return value
+
+class TransactionListResponse(BaseModel):
+    items: list[TransactionPublic]
+    count: int
