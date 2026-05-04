@@ -8,6 +8,7 @@ class Transaction(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     value: int
     date: int
+    category: str
     user_id: int = Field(nullable=False, foreign_key="user.id")
 
     user: "User" = Relationship(back_populates="transactions")
