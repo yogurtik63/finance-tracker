@@ -1,15 +1,14 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, date, timezone
 from typing import Literal
 
-from fastapi import HTTPException
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.core.config import EXPENSE_CATEGORIES, INCOME_CATEGORIES
 
 
 class TransactionFilter(BaseModel):
-    from_date: datetime | None = None
-    to_date: datetime | None = None
+    from_date: date | None = None
+    to_date: date | None = None
     type: Literal["expense", "income"] | None = None
     category: str | None = None
     limit: int = 10
@@ -23,15 +22,7 @@ class TransactionFilter(BaseModel):
             return self
 
         if self.from_date >= self.to_date:
-            raise HTTPException(422, "'from' date can't be less than 'to' date!")
-
-        if self.from_date and not (2010 <= self.from_date.year <= 2027):
-            raise HTTPException(422, "Too old/new from_date")
-
-        if self.to_date and not (2010 <= self.to_date.year <= 2027):
-            raise HTTPException(422, "Too old/new to_date")
-
-        self.to_date = self.to_date + timedelta(days=1)
+            raise ValueError("'from' date can't be less than 'to' date!")
 
         return self
 
@@ -50,16 +41,39 @@ class TransactionFilter(BaseModel):
     @field_validator("limit")
     @classmethod
     def check_limit(cls, value):
-        value = max(1, min(value, 50))
+        if value < 1:
+            raise ValueError("Limit cannot be less than 1!")
+        if value > 50:
+            raise ValueError("Limit cannot be more than 50!")
 
         return value
 
     @field_validator("offset")
     @classmethod
     def check_offset(cls, value):
-        value = max(0, min(value, 100))
+        if value < 0:
+            raise ValueError("Offset cannot be less than 0!")
+        if value > 1000:
+            raise ValueError("Offset cannot be more than 1000!")
 
         return value
+
+    @field_validator("from_date", "to_date", mode="before")
+    @classmethod
+    def parse_strict_date(cls, value):
+        if value is None:
+            return value
+
+        if isinstance(value, date):
+            return value
+
+        if not isinstance(value, str):
+            raise ValueError("Date must be string in YYYY-MM-DD format")
+
+        try:
+            return datetime.strptime(value, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("Invalid date format, use YYYY-MM-DD")
 
 
 class TransactionCreate(BaseModel):

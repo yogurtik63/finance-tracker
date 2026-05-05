@@ -1,4 +1,9 @@
-from fastapi import APIRouter, Depends
+from datetime import date, datetime, timezone
+from typing import Literal
+
+from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.encoders import jsonable_encoder
+from pydantic import ValidationError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -29,11 +34,10 @@ def apply_filters(statement, filters: TransactionFilter, user_id):
     conditions = []
 
     if filters.from_date and filters.to_date:
-        print(filters.from_date)
-        print(filters.to_date)
-
-        conditions.append(Transaction.date >= int(filters.from_date.timestamp()))
-        conditions.append(Transaction.date < int(filters.to_date.timestamp()))
+        conditions.append(Transaction.date >= int(
+            datetime.combine(filters.from_date, datetime.min.time(), tzinfo=timezone.utc).timestamp()))
+        conditions.append(Transaction.date < int(
+            datetime.combine(filters.to_date, datetime.max.time(), tzinfo=timezone.utc).timestamp()))
 
     if filters.type:
         if filters.type == "expense":
@@ -49,11 +53,27 @@ def apply_filters(statement, filters: TransactionFilter, user_id):
 @router.get("/", response_model=TransactionListResponse)
 async def get_transactions(user: User = Depends(get_current_user),
                            session: AsyncSession = Depends(get_session),
-                           filters: TransactionFilter = Depends()):
-    statement = apply_filters(select(Transaction), filters, user.id)
-    statement = statement.order_by(Transaction.date.asc())
-    statement = statement.limit(filters.limit).offset(filters.offset)
 
-    results = (await session.exec(statement)).all()
+                           from_date: date | None = Query(None), to_date: date | None = Query(None),
+                           type: Literal["expense", "income"] | None = Query(None), category: str | None = Query(None),
+                           limit: int = Query(10, ge=1, le=50), offset: int = Query(0, ge=0, le=1000)):
+    try:
+        filters = TransactionFilter(
+            from_date=from_date,
+            to_date=to_date,
+            type=type,
+            category=category,
+            limit=limit,
+            offset=offset
+        )
 
-    return {"items": results, "count": len(results)}
+        statement = apply_filters(select(Transaction), filters, user.id)
+        statement = statement.order_by(Transaction.date.asc())
+        statement = statement.limit(filters.limit).offset(filters.offset)
+
+        results = (await session.exec(statement)).all()
+
+        return {"items": results, "count": len(results)}
+
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=jsonable_encoder(e.errors()))
